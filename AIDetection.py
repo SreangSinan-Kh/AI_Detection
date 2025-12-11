@@ -200,7 +200,7 @@ def main():
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", lambda u,c: button_click(u,c) if False else u.message.reply_text("សូមចុច Menu"))) 
-    app.add_handler(CommandHandler("about", lambda u,c: u.message.reply_text("អំពី Bot...")))
+    app.add_handler(CommandHandler("about", lambda u,c: u.message.reply_text("Bot នេះប្រើប្រាស់បច្ចេកវិទ្យា និង បង្កើតដោយលោក ស្រ៊ាង ស៊ីណាន ")))
 
     app.add_handler(CallbackQueryHandler(button_click))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & filters.Entity("url")), handle_message))
