@@ -129,7 +129,7 @@ async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'about':
         await query.message.reply_text(
             "ℹ️ **អំពី Bot នេះ៖**\n\n"
-            "Bot នេះប្រើប្រាស់បច្ចេកវិទ្យា **Google Gemini AI** ដើម្បីវិភាគ។\n"
+            "Bot នេះប្រើប្រាស់បច្ចេកវិទ្យា **បង្កើតដោយលោក ស្រ៊ាង ស៊ីណាន** ។\n"
             "គោលបំណង៖ ជួយសម្គាល់ខ្លឹមសារ Deepfake/AI Generated។"
         )
 
