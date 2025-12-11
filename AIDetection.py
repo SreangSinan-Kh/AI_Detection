@@ -9,7 +9,7 @@ from flask import Flask
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
-# Load Environment Variables (សម្រាប់ Run ក្នុងកុំព្យូទ័រផ្ទាល់)
+# Load Environment Variables
 load_dotenv()
 
 # ==========================================
@@ -28,7 +28,7 @@ from telegram import Update, constants, InlineKeyboardButton, InlineKeyboardMark
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 # ==========================================
-# 🌐 WEBSERVER (សម្រាប់ UptimeRobot/Render)
+# 🌐 WEBSERVER
 # ==========================================
 app = Flask(__name__)
 
@@ -37,26 +37,22 @@ def home():
     return "🤖 Bot is Alive and Running Securely!"
 
 def run_web_server():
-    # Render នឹងផ្តល់ PORT មកឱ្យ ឬយើងប្រើ 8080
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 
 # ==========================================
-# 🔐 CONFIGURATION (សុវត្ថិភាព)
+# 🔐 CONFIGURATION
 # ==========================================
-# វានឹងទៅយកលេខកូដពី Environment Variables (នៅលើ Render ឬ .env)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
-# ពិនិត្យមើលថាតើមាន Key ឬអត់?
 if not TELEGRAM_TOKEN or not GOOGLE_API_KEY:
     print("❌ Error: រកមិនឃើញ TELEGRAM_TOKEN ឬ GOOGLE_API_KEY ទេ។")
-    print("👉 សូមបង្កើត file .env ឬកំណត់ Environment Variables នៅលើ Render។")
-    sys.exit(1) # បិទកម្មវិធីភ្លាមៗបើគ្មាន Key
+    sys.exit(1)
 
 genai.configure(api_key=GOOGLE_API_KEY)
 
-# 🔍 Auto-Detect Model (បច្ចេកទេស)
+# 🔍 Auto-Detect Model
 def get_best_model():
     try:
         all_models = list(genai.list_models())
@@ -69,11 +65,9 @@ def get_best_model():
     except: return 'gemini-1.5-flash'
 
 REAL_MODEL_NAME = get_best_model()
-
-# ✨ ឈ្មោះសម្រាប់បង្ហាញ User (លាក់ឈ្មោះពិត)
 DISPLAY_NAME = "✨ AI Vision Pro (v2.5)" 
 
-# 📝 PROMPT ជាភាសាខ្មែរ
+# 📝 PROMPT
 FORENSIC_PROMPT = """
 You are an AI Forensic Expert. Analyze the provided image/video to determine if it is AI-generated.
 
@@ -85,16 +79,42 @@ Structure:
 """
 
 # ==========================================
-# 📱 MENU & LOGIC
+# 📱 MENU & LOGIC (កែសម្រួលថ្មី)
 # ==========================================
 
-# បង្កើត Menu ជាប់នៅខាងក្រោម (Commands)
 async def post_init(application: Application):
     await application.bot.set_my_commands([
         BotCommand("start", "🏠 ម៉ឺនុយដើម / Main Menu"),
         BotCommand("help", "📖 របៀបប្រើ / How to use"),
         BotCommand("about", "ℹ️ អំពី Bot / About"),
     ])
+
+# 1. Function សម្រាប់ Help (ប្រើបានទាំង Command និង Button)
+async def send_help_message(update: Update, is_callback=False):
+    text = (
+        "📚 **របៀបប្រើប្រាស់៖**\n\n"
+        "1. ផ្ញើ **រូបភាព** (Photo) មកផ្ទាល់\n"
+        "2. ផ្ញើ **វីដេអូ** (Video) មកផ្ទាល់\n"
+        "3. ផ្ញើ **Link** (URL) ពីវេបសាយនានា\n\n"
+        "🔍 Bot នឹងវិភាគរកស្នាម AI ដោយស្វ័យប្រវត្តិជាភាសាខ្មែរ! 🚀"
+    )
+    if is_callback:
+        await update.callback_query.message.reply_text(text, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(text, parse_mode='Markdown')
+
+# 2. Function សម្រាប់ About (ប្រើបានទាំង Command និង Button)
+async def send_about_message(update: Update, is_callback=False):
+    text = (
+        "ℹ️ **អំពី Bot នេះ៖**\n\n"
+        "Bot នេះប្រើប្រាស់ **បច្ចេកវិទ្យាឆ្លាតវ៉ៃ**។\n"
+        "👨‍💻 បង្កើតដោយ៖ **លោក ស្រ៊ាង ស៊ីណាន**\n"
+        "គោលបំណង៖ ជួយសម្គាល់ខ្លឹមសារ Deepfake/AI Generated។"
+    )
+    if is_callback:
+        await update.callback_query.message.reply_text(text, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(text, parse_mode='Markdown')
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -107,7 +127,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
-        f"👋 **សួស្តី! នេះគឺ AI Detector Bot** 🤖\n"
+        f"👋 **សួស្តីបង! នេះគឺ Bot សម្រាប់ធ្វើការវិភាគរូបភាព ឫ វីឌីអូ AI** 🤖\n"
         f"⚙️ Model: `{DISPLAY_NAME}`\n\n"
         "សូមផ្ញើ **រូបភាព**, **Video**, ឬ **Link** មកខ្ញុំដើម្បីវិភាគ។\n\n"
         "👇 *លោកអ្នកអាចចុច Menu ខាងក្រោម ឬប៊ូតុងនេះ៖*",
@@ -115,23 +135,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+# Handler សម្រាប់ប៊ូតុងចុច (Inline Buttons)
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    await query.answer() # បំបាត់សញ្ញា Loading
+    
     if query.data == 'help':
-        await query.message.reply_text(
-            "📚 **របៀបប្រើប្រាស់៖**\n\n"
-            "1. ផ្ញើ **រូបភាព** (Photo)\n"
-            "2. ផ្ញើ **វីដេអូ** (Video)\n"
-            "3. ផ្ញើ **Link** (URL)\n\n"
-            "🔍 Bot នឹងវិភាគរកស្នាម AI ដោយស្វ័យប្រវត្តិជាភាសាខ្មែរ! 🚀"
-        )
+        await send_help_message(update, is_callback=True)
     elif query.data == 'about':
-        await query.message.reply_text(
-            "ℹ️ **អំពី Bot នេះ៖**\n\n"
-            "Bot នេះប្រើប្រាស់បច្ចេកវិទ្យា **បង្កើតដោយលោក ស្រ៊ាង ស៊ីណាន** ។\n"
-            "គោលបំណង៖ ជួយសម្គាល់ខ្លឹមសារ Deepfake/AI Generated។"
-        )
+        await send_about_message(update, is_callback=True)
+
+# Handler សម្រាប់ Command (/help, /about)
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_help_message(update, is_callback=False)
+
+async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_about_message(update, is_callback=False)
 
 async def process_media(temp_path, mime, status_msg):
     try:
@@ -198,9 +217,10 @@ def main():
 
     app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
     
+    # ✅ កែសម្រួលចំណុចសំខាន់ (ហៅ Function ត្រឹមត្រូវ)
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("help", lambda u,c: button_click(u,c) if False else u.message.reply_text("សូមចុច Menu"))) 
-    app.add_handler(CommandHandler("about", lambda u,c: u.message.reply_text("Bot នេះប្រើប្រាស់បច្ចេកវិទ្យា និង បង្កើតដោយលោក ស្រ៊ាង ស៊ីណាន ")))
+    app.add_handler(CommandHandler("help", help_command))   # កែពី lambda មកជា function
+    app.add_handler(CommandHandler("about", about_command)) # កែពី lambda មកជា function
 
     app.add_handler(CallbackQueryHandler(button_click))
     app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & filters.Entity("url")), handle_message))
