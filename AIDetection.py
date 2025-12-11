@@ -1,0 +1,211 @@
+import os
+import sys
+import asyncio
+import threading
+import tempfile
+import requests
+import logging
+from flask import Flask
+from urllib.parse import urlparse
+from dotenv import load_dotenv
+
+# Load Environment Variables (សម្រាប់ Run ក្នុងកុំព្យូទ័រផ្ទាល់)
+load_dotenv()
+
+# ==========================================
+# 🚑 ផ្នែកពិសេស៖ FIX PYTHON 3.13 & TIMEZONE
+# ==========================================
+try:
+    import pytz
+    import apscheduler.util
+    def force_utc_timezone(timezone): return pytz.UTC
+    apscheduler.util.astimezone = force_utc_timezone
+except Exception: pass
+# ==========================================
+
+import google.generativeai as genai
+from telegram import Update, constants, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+
+# ==========================================
+# 🌐 WEBSERVER (សម្រាប់ UptimeRobot/Render)
+# ==========================================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "🤖 Bot is Alive and Running Securely!"
+
+def run_web_server():
+    # Render នឹងផ្តល់ PORT មកឱ្យ ឬយើងប្រើ 8080
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# ==========================================
+# 🔐 CONFIGURATION (សុវត្ថិភាព)
+# ==========================================
+# វានឹងទៅយកលេខកូដពី Environment Variables (នៅលើ Render ឬ .env)
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
+# ពិនិត្យមើលថាតើមាន Key ឬអត់?
+if not TELEGRAM_TOKEN or not GOOGLE_API_KEY:
+    print("❌ Error: រកមិនឃើញ TELEGRAM_TOKEN ឬ GOOGLE_API_KEY ទេ។")
+    print("👉 សូមបង្កើត file .env ឬកំណត់ Environment Variables នៅលើ Render។")
+    sys.exit(1) # បិទកម្មវិធីភ្លាមៗបើគ្មាន Key
+
+genai.configure(api_key=GOOGLE_API_KEY)
+
+# 🔍 Auto-Detect Model (បច្ចេកទេស)
+def get_best_model():
+    try:
+        all_models = list(genai.list_models())
+        available = [m.name for m in all_models if 'generateContent' in m.supported_generation_methods]
+        priority = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+        for p in priority:
+            for name in available:
+                if p in name: return name
+        return available[0] if available else 'gemini-1.5-flash'
+    except: return 'gemini-1.5-flash'
+
+REAL_MODEL_NAME = get_best_model()
+
+# ✨ ឈ្មោះសម្រាប់បង្ហាញ User (លាក់ឈ្មោះពិត)
+DISPLAY_NAME = "✨ AI Vision Pro (v2.5)" 
+
+# 📝 PROMPT ជាភាសាខ្មែរ
+FORENSIC_PROMPT = """
+You are an AI Forensic Expert. Analyze the provided image/video to determine if it is AI-generated.
+
+IMPORTANT: Response in KHMER LANGUAGE (ភាសាខ្មែរ) ONLY.
+Structure:
+1. **កម្រិតនៃការសង្ស័យ (Likelihood)**: 0-100%.
+2. **ភស្តុតាងដែលរកឃើញ (Visual Evidence)**: Describe artifacts (hands, eyes, lighting, text) in Khmer.
+3. **សន្និដ្ឋាន (Conclusion)**: Real or Fake summary in Khmer.
+"""
+
+# ==========================================
+# 📱 MENU & LOGIC
+# ==========================================
+
+# បង្កើត Menu ជាប់នៅខាងក្រោម (Commands)
+async def post_init(application: Application):
+    await application.bot.set_my_commands([
+        BotCommand("start", "🏠 ម៉ឺនុយដើម / Main Menu"),
+        BotCommand("help", "📖 របៀបប្រើ / How to use"),
+        BotCommand("about", "ℹ️ អំពី Bot / About"),
+    ])
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [
+            InlineKeyboardButton("📸 របៀបប្រើប្រាស់", callback_data='help'),
+            InlineKeyboardButton("ℹ️ អំពី Bot", callback_data='about')
+        ],
+        [InlineKeyboardButton("👨‍💻 អ្នកបង្កើត (Developer)", url="https://t.me/Sinan_Sreang")] 
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        f"👋 **សួស្តី! នេះគឺ AI Detector Bot** 🤖\n"
+        f"⚙️ Model: `{DISPLAY_NAME}`\n\n"
+        "សូមផ្ញើ **រូបភាព**, **Video**, ឬ **Link** មកខ្ញុំដើម្បីវិភាគ។\n\n"
+        "👇 *លោកអ្នកអាចចុច Menu ខាងក្រោម ឬប៊ូតុងនេះ៖*",
+        reply_markup=reply_markup,
+        parse_mode='Markdown'
+    )
+
+async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if query.data == 'help':
+        await query.message.reply_text(
+            "📚 **របៀបប្រើប្រាស់៖**\n\n"
+            "1. ផ្ញើ **រូបភាព** (Photo)\n"
+            "2. ផ្ញើ **វីដេអូ** (Video)\n"
+            "3. ផ្ញើ **Link** (URL)\n\n"
+            "🔍 Bot នឹងវិភាគរកស្នាម AI ដោយស្វ័យប្រវត្តិជាភាសាខ្មែរ! 🚀"
+        )
+    elif query.data == 'about':
+        await query.message.reply_text(
+            "ℹ️ **អំពី Bot នេះ៖**\n\n"
+            "Bot នេះប្រើប្រាស់បច្ចេកវិទ្យា **Google Gemini AI** ដើម្បីវិភាគ។\n"
+            "គោលបំណង៖ ជួយសម្គាល់ខ្លឹមសារ Deepfake/AI Generated។"
+        )
+
+async def process_media(temp_path, mime, status_msg):
+    try:
+        uploaded = genai.upload_file(temp_path, mime_type=mime)
+        while uploaded.state.name == "PROCESSING":
+            await asyncio.sleep(2)
+            uploaded = genai.get_file(uploaded.name)
+        
+        if uploaded.state.name == "FAILED": raise Exception("Google AI Read Failed")
+
+        model = genai.GenerativeModel(REAL_MODEL_NAME, system_instruction=FORENSIC_PROMPT)
+        res = model.generate_content([uploaded, "Analyze this media in Khmer."])
+        
+        await status_msg.edit_text(f"🤖 **លទ្ធផលវិភាគ៖**\n\n{res.text}")
+    except Exception as e:
+        await status_msg.edit_text(f"⚠️ Error: {str(e)[:200]}")
+    finally:
+        if os.path.exists(temp_path): os.remove(temp_path)
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = update.message
+    chat_id = update.effective_chat.id
+    
+    # Handle Link
+    if msg.text and msg.text.startswith(("http", "www")):
+        status = await context.bot.send_message(chat_id, "🔗 កំពុងបើក Link... ⏳", reply_to_message_id=msg.id)
+        try:
+            r = requests.get(msg.text, stream=True, timeout=10)
+            ct = r.headers.get('Content-Type', '')
+            ext, mime = (".mp4", "video/mp4") if 'video' in ct else (".jpg", "image/jpeg")
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                for chunk in r.iter_content(8192): tmp.write(chunk)
+                path = tmp.name
+            
+            await status.edit_text("🔍 កំពុងវិភាគ... ⏳")
+            await process_media(path, mime, status)
+        except Exception as e:
+            await status.edit_text(f"❌ បើក Link មិនកើតទេ: {e}")
+        return
+
+    # Handle Photo/Video
+    if not (msg.photo or msg.video):
+        await msg.reply_text("❌ សូមផ្ញើរូបភាព, វីដេអូ ឬ Link ប៉ុណ្ណោះ។")
+        return
+
+    status = await context.bot.send_message(chat_id, "📥 កំពុងទទួលឯកសារ... ⏳", reply_to_message_id=msg.id)
+    try:
+        f_obj = await (msg.photo[-1].get_file() if msg.photo else msg.video.get_file())
+        ext, mime = (".jpg", "image/jpeg") if msg.photo else (".mp4", "video/mp4")
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+            await f_obj.download_to_drive(tmp.name)
+            path = tmp.name
+            
+        await status.edit_text("🔍 កំពុងវិភាគ... ⏳")
+        await process_media(path, mime, status)
+    except Exception as e:
+        await status.edit_text(f"❌ Error: {e}")
+
+def main():
+    print("🚀 Starting Web Server & Bot...")
+    threading.Thread(target=run_web_server, daemon=True).start()
+
+    app = Application.builder().token(TELEGRAM_TOKEN).post_init(post_init).build()
+    
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", lambda u,c: button_click(u,c) if False else u.message.reply_text("សូមចុច Menu"))) 
+    app.add_handler(CommandHandler("about", lambda u,c: u.message.reply_text("អំពី Bot...")))
+
+    app.add_handler(CallbackQueryHandler(button_click))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | (filters.TEXT & filters.Entity("url")), handle_message))
+    
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,7 @@
+python-telegram-bot
+google-generativeai
+requests
+flask
+pytz
+apscheduler
+python-dotenv
